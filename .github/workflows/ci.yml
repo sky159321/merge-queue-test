@@ -1,0 +1,38 @@
+name: ci
+on:
+  pull_request:
+  merge_group:
+  push:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run scenario verdicts
+        run: |
+          set -uo pipefail
+          echo "event=${{ github.event_name }} ref=${{ github.ref }} sha=${{ github.sha }}"
+          overall=0
+          shopt -s nullglob
+          for f in scenarios/*.sh; do
+            SLEEP=0; EXIT=0
+            # shellcheck disable=SC1090
+            source "$f"
+            echo "::group::$f (sleep=$SLEEP exit=$EXIT)"; cat "$f"; echo "::endgroup::"
+            sleep "$SLEEP"
+            [ "$EXIT" -ne 0 ] && overall=1
+          done
+          exit $overall
+      - name: Docker build+push (echo only, merge_group only)
+        if: ${{ github.event_name == 'merge_group' }}
+        run: echo "pretend docker build+push for ${{ github.sha }}"
+
+  all-green:
+    needs: [check]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          [ "${{ needs.check.result }}" = "success" ] && echo "all green" || exit 1
